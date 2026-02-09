@@ -10,7 +10,7 @@ class MassFunc(ABC):
     """
     
     @abstractmethod
-    def hmf(self, M, z):
+    def _hmf(self, M, z):
         """Implementation of the halo mass function"""
         pass        
 
@@ -26,4 +26,4 @@ class MassFunc(ABC):
             (:obj:`float` or `array`): mass function 
                 :math:`dn/d\\log_{10}M` in units of Mpc^-3 (comoving).
         """
-        return self.hmf(M=M, z=z)
+        return self._hmf(M=M, z=z)

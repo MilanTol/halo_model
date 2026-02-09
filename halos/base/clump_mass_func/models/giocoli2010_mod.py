@@ -2,11 +2,11 @@ from ..clump_mass_func import ClumpMassFunc
 
 import numpy as np
 
-class Giocoli2010_mod(ClumpMassFunc):
+class ClumpMassFuncGiocoli2010_mod(ClumpMassFunc):
 
     def __init__(self, m0, beta):
         self.m0 = m0
-        self.alpha = beta
+        self.beta = beta
 
     def standard(self, m, M, z): 
         #This function is missing c/c_bar, 
@@ -17,7 +17,7 @@ class Giocoli2010_mod(ClumpMassFunc):
         beta = 12.2715
         return M * (1+z)**0.5 * A * m**alpha * np.exp(-beta * (m / M)**3)
     
-    def cmf(self, m, M, z):
+    def _cmf(self, m, M, z):
         return (1 + self.m0/m)**self.beta * self.standard(m, M, z)
     
     

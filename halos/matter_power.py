@@ -9,7 +9,7 @@ from multiprocessing import Pool, cpu_count
 from scipy import interpolate
 
 
-class HaloModel:
+class MatterPower:
 
     def __init__(self,
                  cfg: Config,
@@ -48,80 +48,56 @@ class HaloModel:
         # To speed up computation we will interpolate Ic and Jc integrals in the initializer
         ######################################################################################
 
-        # Worker function to compute both Ic and Jc for one (k, M)
-        def compute_point(args):
-            k, M = args
-            Ic_val = self.Ic_analytic(k, M)
-            Jc_val = self.Jc_analytic(k, M)
-            return (k, M, Ic_val, Jc_val)
+        print("interpolating f_sub function...")
 
+        M_min = float(cfg.M_min)
+        M_max = float(cfg.M_max)
+
+        # interpolate f_sub values for faster computation later
+        lnM_values = np.log(np.logspace(np.log10(M_min), np.log10(M_max), 100))
+        f_values = np.zeros_like(lnM_values)
+        for i, lnM in enumerate(lnM_values):
+            f_values[i] = self.clump_mass_func.f(np.exp(lnM), cfg.z, cfg.m_min)
+        self.f_lnM = interpolate.interp1d(lnM_values, f_values, kind='cubic', fill_value="extrapolate")
+        
         print("interpolating Ic and Jc functions...")
 
         # Define grids
-        k_grid = np.logspace(np.log10(cfg.k_min), np.log10(cfg.k_max), cfg.N_k)  
-        M_grid = np.logspace(np.log10(cfg.M_min), np.log10(cfg.M_max), cfg.N_M)   
+        lnk_grid = np.log(np.logspace(np.log10(cfg.k_min), np.log10(cfg.k_max), cfg.N_k))
+        lnM_grid = np.log(np.logspace(np.log10(cfg.M_min), np.log10(cfg.M_max), cfg.N_M))
 
         # Allocate arrays
-        Ic_vals = np.zeros((len(k_grid), len(M_grid)))
-        Jc_vals = np.zeros((len(k_grid), len(M_grid)))
+        Ic_vals = np.zeros((len(lnk_grid), len(lnM_grid)))
+        Jc_vals = np.zeros((len(lnk_grid), len(lnM_grid)))
     
-        args = [(k, M) for k in k_grid for M in M_grid]
+        args = [(self, np.exp(lnk), np.exp(lnM)) for lnk in lnk_grid for lnM in lnM_grid]
 
         with Pool(processes=cpu_count()) as pool:
             points = pool.map(compute_point, args)
 
         # Fill results into arrays
         for (k, M, Ic_val, Jc_val) in points:
-            i = np.where(k_grid == k)[0][0]
-            j = np.where(M_grid == M)[0][0]
+            i = np.where(lnk_grid == np.log(k))[0][0]
+            j = np.where(lnM_grid == np.log(M))[0][0]
             Ic_vals[i, j] = Ic_val
             Jc_vals[i, j] = Jc_val
 
         # Create interpolators
-        self.Ic = interpolate.RegularGridInterpolator((k_grid, M_grid), Ic_vals,
+        self.Ic_logspace = interpolate.RegularGridInterpolator((lnk_grid, lnM_grid), Ic_vals,
                                                         bounds_error=False, fill_value=None)
-        self.Jc = interpolate.RegularGridInterpolator((k_grid, M_grid), Jc_vals,
+        self.Jc_logspace = interpolate.RegularGridInterpolator((lnk_grid, lnM_grid), Jc_vals,
                                                         bounds_error=False, fill_value=None)
 
 
-    def Ic_analytic(self, k, M):
-        """I_c integral, eq. (30) in Giocoli et al..
-        Args:
-            k: wavenumber [Mpc/h]^-1
-            M_parent: total halo mass [h M_sun]
-        """
-        
-        def m_integrand(lnm):
-            m = np.exp(lnm)
-            clump_profile_temp = self.clump_profile.fourier(self.cfg.cosmo, k, m, self.cfg.z)
-            return (1/M 
-                    * clump_profile_temp 
-                    * self.clump_mass_func(m, M, self.cfg.z) 
-                    * m) # Jacobian for dlnm to dm conversion 
-
-        I, error = integrate.quad(m_integrand, np.log(self.cfg.m_min), np.log(M), epsrel=1e-4, limit=200)
-
-        return I
-
-
-    def Jc_analytic(self, k, M):
-        """J_c integral, eq. (31) in Giocoli et al..
-        Args:
-            k: wavenumber [Mpc/h]^-1
-            M_parent: total halo mass [h M_sun]
-        """
-
-        def m_integrand(lnm):
-            m = np.exp(lnm)
-            return (m*(1/M)**2 
-                    * self.clump_profile.fourier(self.cfg.cosmo, k, m, self.cfg.z)**2  
-                    * self.clump_mass_func(m, M, self.cfg.z) 
-                    * m)   # Jacobian for dlnm to dm conversion
-        
-        J, error = integrate.quad(m_integrand, np.log(self.cfg.m_min), np.log(M), epsrel=1e-4, limit=200)
-
-        return J
-
+    def f(self, M):
+        return self.f_lnM(np.log(M))
+    
+    def Ic(self, k, M):
+        return self.Ic_logspace((np.exp(k), np.exp(M)))
+    
+    def Jc(self, k, M):
+        return self.Jc_logspace((np.exp(k), np.exp(M)))
+    
 
     def P_1h_ss(self, k):
         cfg = self.cfg
@@ -131,7 +107,7 @@ class HaloModel:
 
         def M_integrand(ln_M):
             M = np.exp(ln_M)
-            M_smooth = (1 - self.clump_mass_func.f(M, cfg.z, m_min=cfg.m_min)) * M
+            M_smooth = (1 - self.f(M)) * M
             n = self.mass_func(M, cfg.z)
 
             first_term = prefactor * n
@@ -163,10 +139,10 @@ class HaloModel:
             n = self.mass_func(M, cfg.z)
             first_term = 2 * prefactor * M  * n
 
-            M_smooth = (1 - self.clump_mass_func.f(M, cfg.z, cfg.m_min)) * M  # Smooth mass component
+            M_smooth = (1 - self.f(M)) * M  # Smooth mass component
             second_term = M_smooth * self.smooth_profile.fourier(cfg.cosmo, k, M, cfg.z)
 
-            third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M, cfg.z) * self.Ic((k, M))
+            third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M, cfg.z) * self.Ic(k, M)
 
             return first_term * second_term * third_term * M # Jacobian for dlnM to dM conversion
 
@@ -190,7 +166,7 @@ class HaloModel:
             n = self.mass_func(M, cfg.z)
 
             first_term = M**2 * prefactor * n
-            return first_term * self.Jc((k, M)) * M # Jacobian for dlnM to dM conversion   
+            return first_term * self.Jc(k, M) * M # Jacobian for dlnM to dM conversion   
 
         I, error = integrate.quad(M_integrand, np.log(cfg.M_min), np.log(cfg.M_max), epsrel=1e-4, limit=200)
 
@@ -212,7 +188,7 @@ class HaloModel:
             n = self.mass_func(M, cfg.z)
 
             first_term = M**2 * prefactor * n
-            second_term = self.clump_distribution.fourier(cfg.cosmo, k, M, cfg.z)**2 * self.Ic((k, M))**2
+            second_term = self.clump_distribution.fourier(cfg.cosmo, k, M, cfg.z)**2 * self.Ic(k, M)**2
 
             return first_term * second_term * M # Jacobian for dlnM to dM conversion
         
@@ -228,3 +204,51 @@ class HaloModel:
         """
         return self.P_1h_ss(k) + self.P_1h_sc(k) + self.P_1h_self_c(k) + self.P_1h_cc(k)
     
+
+
+def Ic_analytic(self: MatterPower, k, M):
+    """I_c integral, eq. (30) in Giocoli et al..
+    Args:
+        k: wavenumber [Mpc/h]^-1
+        M_parent: total halo mass [h M_sun]
+    """
+    
+    def m_integrand(lnm):
+        m = np.exp(lnm)
+        clump_profile_temp = self.clump_profile.fourier(self.cfg.cosmo, k, m, self.cfg.z)
+
+        return (1/M 
+                * clump_profile_temp 
+                * self.clump_mass_func(m, M, self.cfg.z) 
+                * m) # Jacobian for dlnm to dm conversion 
+
+    I, error = integrate.quad(m_integrand, np.log(self.cfg.m_min), np.log(M), epsrel=1e-4, limit=200)
+
+    return I
+
+
+def Jc_analytic(self: MatterPower, k, M):
+    """J_c integral, eq. (31) in Giocoli et al..
+    Args:
+        k: wavenumber [Mpc/h]^-1
+        M_parent: total halo mass [h M_sun]
+    """
+
+    def m_integrand(lnm):
+        m = np.exp(lnm)
+        return (m*(1/M)**2 
+                * self.clump_profile.fourier(self.cfg.cosmo, k, m, self.cfg.z)**2  
+                * self.clump_mass_func(m, M, self.cfg.z) 
+                * m)   # Jacobian for dlnm to dm conversion
+    
+    J, error = integrate.quad(m_integrand, np.log(self.cfg.m_min), np.log(M), epsrel=1e-4, limit=200)
+
+    return J
+
+
+# Worker function to compute both Ic and Jc for one (k, M)
+def compute_point(args):
+    Pm, k, M = args
+    Ic_val = Ic_analytic(Pm, k, M)
+    Jc_val = Jc_analytic(Pm, k, M)
+    return (k, M, Ic_val, Jc_val)

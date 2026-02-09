@@ -13,3 +13,5 @@ class ConcentrationNeto2007(Concentration):
         return c0 * (M / M_pivot)**beta * (1 + z)**-1
     
 
+    
+

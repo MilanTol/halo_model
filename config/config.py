@@ -6,7 +6,7 @@ class Config:
 
     def __init__(self, path_to_config=None):
         if path_to_config is None:
-            path_to_config = "/home/milan/Desktop/thesis/code/config/config.yaml"
+            path_to_config = "/home/milan/Desktop/thesis/code/halo_model/config/config.yaml"
 
         #open the matter power spectrum config file
         with open(path_to_config) as file:
@@ -44,8 +44,8 @@ class Config:
         self.alpha      = float(config['alpha'])
 
         # clump mass function parameters
-        self.m_pivot    = float(config['m_pivot'])
-        self.alpha_clump = float(config['alpha_clump'])
+        self.m0   = float(config['m0'])
+        self.beta = float(config['beta'])
 
         #data storage
         self.Pm_dir     = str(config['Pm_dir'])

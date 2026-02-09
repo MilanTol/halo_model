@@ -7,7 +7,7 @@ import numpy as np
 class ClumpMassFunc(ABC):
 
     @abstractmethod
-    def cmf(self, m, M, z):
+    def _cmf(self, m, M, z):
         """Implementation of the clump mass function"""
         pass
 
@@ -23,7 +23,7 @@ class ClumpMassFunc(ABC):
 
         def integrand(ln_m):
             m = np.exp(ln_m)
-            return self.cmf(m, M, z) * m
+            return self._cmf(m, M, z) * m
         
         mass_in_clumps, error = integrate.quad(integrand, np.log(m_min), np.log(M))
         return mass_in_clumps / M
@@ -41,4 +41,4 @@ class ClumpMassFunc(ABC):
             (:obj:`float` or `array`): clump mass function 
                 :math:`dn/d\\log_{10}M` in units of Mpc^-3 (comoving).
         """
-        return self.cmf(m=m, M=M, z=z)
+        return self._cmf(m=m, M=M, z=z)

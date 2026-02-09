@@ -4,7 +4,7 @@ import numpy as np
 
 class Giocoli2010(ClumpMassFunc):
 
-    def cmf(self, m, M_parent, z): 
+    def _cmf(self, m, M_parent, z): 
         #This function is missing c/c_bar, 
         #this is only valid for  fixed relation concentration-mass.
         """Clump mass function from Giocoli et al. (2010)"""
