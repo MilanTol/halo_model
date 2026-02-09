@@ -15,7 +15,7 @@ class NFW(Profile):
         return 1/(np.log(1 + c) - c / (1 + c))
     
 
-    def fourier(self, cosmo, k, M, z):
+    def _fourier(self, cosmo, k, M, z):
         c = self.c(cosmo, M, z)
 
         ka = k * self.r_vir(cosmo, M, z) / c

@@ -1,0 +1,42 @@
+
+#config matter power spectrum
+z: 0
+m_min: 1
+M_min: 1
+M_max: 1e16
+N_M: 60
+k_min: 1e-1
+k_max: 1e4
+N_k: 60
+Delta_vir: 340 #See figure 1 in eke et al. for some value of Omega_m
+d_vir: 1
+
+#config convergence power spectrum
+z_min: 0
+z_max: 0.5
+N_z: 6    #amount of redshift points to sample from
+z_sources: 0.5 #redshift at which sources are located (its a dirac delta distribution)
+l_min: 1e1
+l_max: 1e6
+N_l: 40           #Number of points along l used for interpolation
+
+# Cosmology parameters 
+cosmo_params:
+  flat: true
+  H0: 73.2
+  Om0: 0.238
+  Ob0: 0.0416
+  sigma8: 0.759
+  ns: 0.958
+
+# halo mass function parameters
+M_pivot: 1
+alpha: 0
+
+#clump mass function parameters
+m_pivot: 1e11
+alpha_clump: 0
+
+#data storage
+Pm_dir: '/home/milan/Desktop/thesis/code/data/matter_power_spectra/regular'
+Pk_dir: '/home/milan/Desktop/thesis/code/data/convergence_power_spectra/regular'
