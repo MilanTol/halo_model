@@ -93,10 +93,10 @@ class MatterPower:
         return self.f_lnM(np.log(M))
     
     def Ic(self, k, M):
-        return self.Ic_logspace((np.exp(k), np.exp(M)))
+        return self.Ic_logspace((np.log(k), np.log(M)))
     
     def Jc(self, k, M):
-        return self.Jc_logspace((np.exp(k), np.exp(M)))
+        return self.Jc_logspace((np.log(k), np.log(M)))
     
 
     def P_1h_ss(self, k):
