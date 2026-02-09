@@ -20,7 +20,7 @@ class MassFunc(ABC):
 
         Args:
             M (:obj:`float` or `array`): halo mass.
-            z (:obj:`float`): scale factor.
+            z (:obj:`float`): redshift.
 
         Returns:
             (:obj:`float` or `array`): mass function 

@@ -1,6 +1,7 @@
 from ..profile import Profile
 from ...concentration.concentration import Concentration
 from ...r_vir.r_vir import R_vir
+from .nfw_helper_functions.Si_Ci_integrals import Si, Ci
 
 import numpy as np
 
