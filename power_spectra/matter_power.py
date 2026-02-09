@@ -1,6 +1,7 @@
-from .base.profile.profile import Profile
-from .base.mass_func.mass_func import MassFunc
-from .base.clump_mass_func.clump_mass_func import ClumpMassFunc
+from ..halos.base.profile.profile import Profile
+from ..halos.base.mass_func.mass_func import MassFunc
+from ..halos.base.clump_mass_func.clump_mass_func import ClumpMassFunc
+from ..halos.base.bias.bias import Bias
 from ..config.config import Config
 
 from scipy import integrate
@@ -15,6 +16,7 @@ class MatterPower:
                  cfg: Config,
                  mass_func: MassFunc,
                  smooth_profile: Profile,
+                 bias: Bias,
                  clump_mass_func: ClumpMassFunc,
                  clump_profile: Profile,
                  clump_distribution: Profile
@@ -26,6 +28,8 @@ class MatterPower:
         :type cfg: Config
         :param mass_func: halo mass fucntion
         :type mass_func: MassFunc
+        :param bias: bias
+        :type bias: Bias
         :param smooth_profile: smooth profile
         :type smooth_profile: Profile
         :param clump_mass_func: Description
@@ -39,6 +43,7 @@ class MatterPower:
         self.cfg = cfg
         self.mass_func = mass_func
         self.smooth_profile = smooth_profile
+        self.bias = bias
         self.clump_mass_func = clump_mass_func
         self.clump_profile = clump_profile
         self.clump_distribution = clump_distribution
@@ -111,7 +116,7 @@ class MatterPower:
             n = self.mass_func(M, cfg.z)
 
             first_term = prefactor * n
-            second_term = M_smooth**2 * self.smooth_profile.fourier(cfg.cosmo, k, M, cfg.z)**2
+            second_term = M_smooth**2 * self.smooth_profile.fourier(cfg.cosmo, k, M_smooth, cfg.z)**2
 
             return first_term*second_term*M #times M for jacobian dlnM to dM
 
@@ -140,9 +145,9 @@ class MatterPower:
             first_term = 2 * prefactor * M  * n
 
             M_smooth = (1 - self.f(M)) * M  # Smooth mass component
-            second_term = M_smooth * self.smooth_profile.fourier(cfg.cosmo, k, M, cfg.z)
+            second_term = M_smooth * self.smooth_profile.fourier(cfg.cosmo, k, M_smooth, cfg.z)
 
-            third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M, cfg.z) * self.Ic(k, M)
+            third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M_smooth, cfg.z) * self.Ic(k, M)
 
             return first_term * second_term * third_term * M # Jacobian for dlnM to dM conversion
 
@@ -188,7 +193,8 @@ class MatterPower:
             n = self.mass_func(M, cfg.z)
 
             first_term = M**2 * prefactor * n
-            second_term = self.clump_distribution.fourier(cfg.cosmo, k, M, cfg.z)**2 * self.Ic(k, M)**2
+            M_smooth = (1 - self.f(M))*M
+            second_term = self.clump_distribution.fourier(cfg.cosmo, k, M_smooth, cfg.z)**2 * self.Ic(k, M)**2
 
             return first_term * second_term * M # Jacobian for dlnM to dM conversion
         
@@ -204,6 +210,72 @@ class MatterPower:
         """
         return self.P_1h_ss(k) + self.P_1h_sc(k) + self.P_1h_self_c(k) + self.P_1h_cc(k)
     
+
+    def S_I(self, k):
+
+        cfg = self.cfg
+        rho0 = cfg.cosmo.rho_m(z=0) * 1e9 #should be at z=0!
+        prefactor = 1/rho0
+
+        def M_integrand(lnM):
+
+            M = np.exp(lnM)
+
+            n = self.mass_func(M, cfg.z)
+            first_term = M * prefactor * n * self.bias(M, cfg.z)
+
+            M_smooth = (1 - self.f(M)) * M
+            u_smooth = self.smooth_profile.fourier(cfg.cosmo, k, M_smooth, cfg.z)
+            second_term = M_smooth * u_smooth #1/M is multiplied out by jacobian
+
+            return first_term*second_term #M jacobian is multiplied out by second term 1/M
+
+        S, error = integrate.quad(M_integrand, np.log(cfg.M_min), np.log(cfg.M_max), epsrel=1e-4, limit=200)
+        return S
+
+
+    def C_I(self, k):
+        cfg = self.cfg
+        rho0 = cfg.cosmo.rho_m(z=0) * 1e9 #should be at z=0!
+        prefactor = 1/rho0
+
+        def M_integrand(lnM):
+
+            M = np.exp(lnM)
+
+            n = self.mass_func(M, cfg.z)
+            first_term = M * prefactor * n * self.bias(M, z=cfg.z)
+
+            second_term = self.clump_distribution.fourier(cfg.cosmo, k, M, cfg.z) * self.Ic(k, M)
+
+            return first_term*second_term * M #M jacobian is multiplied out by second term 1/M
+
+
+        C, error = integrate.quad(M_integrand, np.log(cfg.M_min), np.log(cfg.M_max), epsrel=1e-4, limit=200)
+        return C
+
+
+    def P_2h_ss(self, k):
+        cfg = self.cfg
+        return cfg.cosmo.matterPowerSpectrum(k, cfg.z) * self.S_I(k)**2
+
+
+    def P_2h_sc(self, k):
+        cfg = self.cfg
+        return 2*cfg.cosmo.matterPowerSpectrum(k, cfg.z) * self.S_I(k)*self.C_I(k)
+
+
+    def P_2h_cc(self, k):
+        cfg = self.cfg
+        return cfg.cosmo.matterPowerSpectrum(k, cfg.z) *self.C_I(k)**2
+
+
+    def P_2h(self, k):
+        return self.P_2h_ss(k) + self.P_2h_sc(k) + self.P_2h_cc(k)
+
+
+    def P_tot(self, k):
+        return self.P_1h(k) + self.P_2h(k)
 
 
 def Ic_analytic(self: MatterPower, k, M):
