@@ -8,11 +8,12 @@ from ..config.config import Config
 import numpy as np
 from scipy import interpolate
 from scipy import integrate
+from multiprocessing import Pool, cpu_count
 
 #speed of light
 c = 3e5 #km/s
 
-class Cl:
+class AngularPower:
     def __init__(self,
                  cfg: Config,
                  mass_func: MassFunc,
@@ -68,42 +69,57 @@ class Cl:
 
         print("interpolating power spectra over k and z")
 
-        #first calculate all power spectrum component values and store them in arrays:
-        lnk_logspace = np.log(np.logspace(np.log10(self.cfg.k_min), np.log10(self.cfg.k_max), self.cfg.N_k))
-        P_1h_ss = []
-        P_1h_sc = []
-        P_1h_self_c = []
-        P_1h_cc = []
-        P_2h = []
+        # Define grids
+        lnk_grid = np.log(np.logspace(np.log10(cfg.k_min), np.log10(cfg.k_max), cfg.N_k))
 
-        for Pm in self.Pm_list:
-            P_1h_ss.append([Pm.P_1h_ss(np.exp(lnk)) for lnk in lnk_logspace])
-            P_1h_sc.append([Pm.P_1h_sc(np.exp(lnk)) for lnk in lnk_logspace])
-            P_1h_self_c.append([Pm.P_1h_self_c(np.exp(lnk)) for lnk in lnk_logspace])
-            P_1h_cc.append([Pm.P_1h_cc(np.exp(lnk)) for lnk in lnk_logspace])
-            P_2h.append([Pm.P_2h(np.exp(lnk)) for lnk in lnk_logspace])
-            
-        #interpolate over logk and z:
-        self.P_1h_ss_lnk = interpolate.RectBivariateSpline(lnk_logspace, z_linspace, np.array(P_1h_ss).T)
-        self.P_1h_sc_lnk = interpolate.RectBivariateSpline(lnk_logspace, z_linspace, np.array(P_1h_sc).T)
-        self.P_1h_self_c_lnk = interpolate.RectBivariateSpline(lnk_logspace, z_linspace, np.array(P_1h_self_c).T)
-        self.P_1h_cc_lnk = interpolate.RectBivariateSpline(lnk_logspace, z_linspace, np.array(P_1h_cc).T)
-        self.P_2h_lnk = interpolate.RectBivariateSpline(lnk_logspace, z_linspace, np.array(P_2h).T)
+        # Allocate arrays
+        P_1h_ss_vals = np.zeros((len(lnk_grid), len(z_linspace)))
+        P_1h_sc_vals = np.zeros((len(lnk_grid), len(z_linspace)))
+        P_1h_self_c_vals = np.zeros((len(lnk_grid), len(z_linspace)))
+        P_1h_cc_vals = np.zeros((len(lnk_grid), len(z_linspace)))
+        P_2h_vals = np.zeros((len(lnk_grid), len(z_linspace)))
     
+        args = [(np.exp(lnk), Pm) for lnk in lnk_grid for Pm in self.Pm_list]
 
+        with Pool(processes=cpu_count()) as pool:
+            points = pool.map(compute_point, args)
+
+        # Fill results into arrays
+        for (k, z, P_1h_ss_val, P_1h_sc_val, P_1h_self_c_val, P_1h_cc_val, P_2h_val) in points:
+            i = np.where(lnk_grid == np.log(k))[0][0]
+            j = np.where(z_linspace == z)[0][0]
+            P_1h_ss_vals[i,j] = P_1h_ss_val
+            P_1h_sc_vals[i,j] = P_1h_sc_val
+            P_1h_self_c_vals[i,j] = P_1h_self_c_val
+            P_1h_cc_vals[i,j] = P_1h_cc_val
+            P_2h_vals[i,j] = P_2h_val
+
+        # Create interpolators
+        self.P_1h_ss_lnk = interpolate.RegularGridInterpolator((lnk_grid, z_linspace), P_1h_ss_vals,
+                                                        bounds_error=False, fill_value=None)
+        self.P_1h_sc_lnk = interpolate.RegularGridInterpolator((lnk_grid, z_linspace), P_1h_sc_vals,
+                                                        bounds_error=False, fill_value=None)
+        self.P_1h_self_c_lnk = interpolate.RegularGridInterpolator((lnk_grid, z_linspace), P_1h_self_c_vals,
+                                                        bounds_error=False, fill_value=None)
+        self.P_1h_cc_lnk = interpolate.RegularGridInterpolator((lnk_grid, z_linspace), P_1h_cc_vals,
+                                                        bounds_error=False, fill_value=None)
+        self.P_2h_lnk = interpolate.RegularGridInterpolator((lnk_grid, z_linspace), P_2h_vals,
+                                                        bounds_error=False, fill_value=None)
+        
+        
     #matter power spectrum components interpolated over k and z:
     def P_1h_ss(self, k, z):
-        return self.P_1h_ss_lnk(np.log(k), z)
+        return self.P_1h_ss_lnk((np.log(k), z))
     def P_1h_sc(self, k, z):
-        return self.P_1h_sc_lnk(np.log(k), z)
+        return self.P_1h_sc_lnk((np.log(k), z))
     def P_1h_self_c(self, k, z):
-        return self.P_1h_self_c_lnk(np.log(k), z)
+        return self.P_1h_self_c_lnk((np.log(k), z))
     def P_1h_cc(self, k, z):
-        return self.P_1h_cc_lnk(np.log(k), z)
+        return self.P_1h_cc_lnk((np.log(k), z))
     def P_1h(self, k, z):
         return self.P_1h_ss(k, z) + self.P_1h_sc(k, z) + self.P_1h_self_c(k,z) + self.P_1h_cc(k,z)
     def P_2h(self, k, z):
-        return self.P_2h_lnk(np.log(k), z)
+        return self.P_2h_lnk((np.log(k), z))
     
 
     def lensing_kernel(self, z):
@@ -135,21 +151,32 @@ class Cl:
             H = cfg.cosmo.Hz(z) #returns in km/s/Mpc --> note that c is given in km/s
             return 2*np.pi * c/H * w(z)**2 / D**2 * P(l/D, z)
 
-        I, err = integrate.quad(integrand, 0, cfg.z_sources, limit=200, epsrel=1e-4)
+        I, err = integrate.quad(func=integrand, a=0, b=cfg.z_sources, epsrel=1e-4, limit=200)
 
         return I
     
 
-    def Cl_1h_ss(self, l):
-        return self.P_to_C(self, l, self.P_1h_ss, self.lensing_kernel)
-    def Cl_1h_sc(self, l):
-        return self.P_to_C(self, l, self.P_1h_sc, self.lensing_kernel)
-    def Cl_1h_self_c(self, l):
-        return self.P_to_C(self, l, self.P_1h_self_c, self.lensing_kernel)
-    def Cl_1h_cc(self, l):
-        return self.P_to_C(self, l, self.P_1h_cc, self.lensing_kernel)
-    def Cl_1h(self, l):
-        return self.P_to_C(self, l, self.P_1h, self.lensing_kernel)
-    def Cl_2h(self, l):
-        return self.P_to_C(self, l, self.P_2h, self.lensing_kernel)
-    
+    def C_1h_ss(self, l):
+        return self.P_to_C(l, self.P_1h_ss, self.lensing_kernel)
+    def C_1h_sc(self, l):
+        return self.P_to_C(l, self.P_1h_sc, self.lensing_kernel)
+    def C_1h_self_c(self, l):
+        return self.P_to_C(l, self.P_1h_self_c, self.lensing_kernel)
+    def C_1h_cc(self, l):
+        return self.P_to_C(l, self.P_1h_cc, self.lensing_kernel)
+    def C_1h(self, l):
+        return self.P_to_C(l, self.P_1h, self.lensing_kernel)
+    def C_2h(self, l):
+        return self.P_to_C(l, self.P_2h, self.lensing_kernel)
+    def C_tot(self, l):
+        return self.C_1h(l) + self.C_2h(l)
+
+# Worker function to compute both Ic and Jc for one (k, M)
+def compute_point(args: tuple[float, MatterPower]):
+    k, Pm = args
+    P_1h_ss_val = Pm.P_1h_ss(k)
+    P_1h_sc_val = Pm.P_1h_sc(k)
+    P_1h_self_c_val = Pm.P_1h_self_c(k)
+    P_1h_cc_val = Pm.P_1h_cc(k)
+    P_2h_val = Pm.P_2h(k)
+    return (k, Pm.cfg.z, P_1h_ss_val, P_1h_sc_val, P_1h_self_c_val, P_1h_cc_val, P_2h_val)
