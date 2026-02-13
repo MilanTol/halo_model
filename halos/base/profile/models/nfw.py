@@ -16,7 +16,7 @@ class ProfileNFW(Profile):
     
 
     def _fourier(self, cosmo, k, M, z):
-        c = self.c._concentration(self.c, cosmo, M, z)
+        c = self.c(cosmo, M, z)
 
         ka = k * self.r_vir(cosmo, M, z) / c
 
