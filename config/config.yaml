@@ -7,7 +7,7 @@ M_max: 1e16
 N_M: 50
 k_min: 1e-1
 k_max: 1e4
-N_k: 50
+N_k: 60
 Delta_vir: 340 #See figure 1 in eke et al. for some value of Omega_m
 d_vir: 1
 
@@ -16,9 +16,9 @@ z_min: 0
 z_max: 1
 N_z: 6    #amount of redshift points to sample from
 z_sources: 1 #redshift at which sources are located (its a dirac delta distribution)
-l_min: 1e1
-l_max: 1e6
-N_l: 40           #Number of points along l used for interpolation
+l_min: 1e2
+l_max: 1e7
+N_l: 60           #Number of points along l used for interpolation
 
 # Cosmology parameters 
 cosmo_params:
@@ -34,7 +34,7 @@ M_pivot: 1
 alpha: 0
 
 #clump mass function parameters
-m0: 1e11
+m0: 2e9
 beta: 0
 
 #data storage
