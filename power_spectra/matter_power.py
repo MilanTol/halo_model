@@ -8,6 +8,7 @@ from scipy import integrate
 import numpy as np
 from multiprocessing import Pool, cpu_count
 from scipy import interpolate
+from scipy.integrate import romb
 
 
 class MatterPower:
@@ -62,7 +63,7 @@ class MatterPower:
         lnM_values = np.log(np.logspace(np.log10(M_min), np.log10(M_max), 100))
         f_values = np.zeros_like(lnM_values)
         for i, lnM in enumerate(lnM_values):
-            f_values[i] = self.clump_mass_func.f(np.exp(lnM), cfg.z, cfg.m_min)
+            f_values[i] = self.clump_mass_func.f(np.exp(lnM), cfg.z, cfg.m_min, cfg.N_m)
         self.f_lnM = interpolate.interp1d(lnM_values, f_values, kind='cubic', fill_value="extrapolate")
         
         print("interpolating Ic and Jc functions...")
@@ -75,7 +76,7 @@ class MatterPower:
         Ic_vals = np.zeros((len(lnk_grid), len(lnM_grid)))
         Jc_vals = np.zeros((len(lnk_grid), len(lnM_grid)))
     
-        args = [(self, np.exp(lnk), np.exp(lnM)) for lnk in lnk_grid for lnM in lnM_grid]
+        args = [(np.log(cfg.m_min), lnM, cfg.N_m, self, np.exp(lnk), np.exp(lnM)) for lnk in lnk_grid for lnM in lnM_grid]
 
         with Pool(processes=cpu_count()) as pool:
             points = pool.map(compute_point, args)
@@ -110,18 +111,21 @@ class MatterPower:
         rho0 = cfg.cosmo.rho_m(z=0) * 1e9 #should be at z=0!
         prefactor = 1/rho0**2
 
-        def M_integrand(ln_M):
-            M = np.exp(ln_M)
+        def M_integrand(lnM):
+            M = np.exp(lnM)
             M_smooth = (1 - self.f(M)) * M
             n = self.mass_func(M, cfg.z)
 
-            first_term = prefactor * n
+            first_term = n
             second_term = M_smooth**2 * self.smooth_profile.fourier(cfg.cosmo, k, M_smooth, cfg.z)**2
 
             return first_term*second_term*M #times M for jacobian dlnM to dM
 
-        I, error = integrate.quad(M_integrand, np.log(cfg.M_min), np.log(cfg.M_max), limit=200, epsrel=1e-4)
-        return I
+        xs = np.linspace(np.log(cfg.M_min), np.log(cfg.M_max), cfg.N_M + 1)
+        dx = xs[1] - xs[0]
+        ys = [M_integrand(lnM) for lnM in xs]
+
+        return prefactor * romb(ys, dx)
     
 
     def P_1h_sc(self, k):
@@ -142,7 +146,7 @@ class MatterPower:
         def M_integrand(ln_M):
             M = np.exp(ln_M) 
             n = self.mass_func(M, cfg.z)
-            first_term = 2 * prefactor * M  * n
+            first_term = 2 * M  * n
 
             M_smooth = (1 - self.f(M)) * M  # Smooth mass component
             second_term = M_smooth * self.smooth_profile.fourier(cfg.cosmo, k, M, cfg.z)
@@ -150,10 +154,12 @@ class MatterPower:
             third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M, cfg.z) * self.Ic(k, M)
 
             return first_term * second_term * third_term * M # Jacobian for dlnM to dM conversion
+        
+        xs = np.linspace(np.log(cfg.M_min), np.log(cfg.M_max), cfg.N_M + 1)
+        dx = xs[1] - xs[0]
+        ys = [M_integrand(lnM) for lnM in xs]
 
-        I, error = integrate.quad(M_integrand, np.log(cfg.M_min), np.log(cfg.M_max), epsrel=1e-4, limit=200)
-
-        return I
+        return prefactor * romb(ys, dx)
         
 
     def P_1h_self_c(self, k):
@@ -170,12 +176,14 @@ class MatterPower:
             M = np.exp(ln_M)
             n = self.mass_func(M, cfg.z)
 
-            first_term = M**2 * prefactor * n
+            first_term = M**2 * n
             return first_term * self.Jc(k, M) * M # Jacobian for dlnM to dM conversion   
 
-        I, error = integrate.quad(M_integrand, np.log(cfg.M_min), np.log(cfg.M_max), epsrel=1e-4, limit=200)
+        xs = np.linspace(np.log(cfg.M_min), np.log(cfg.M_max), cfg.N_M + 1)
+        dx = xs[1] - xs[0]
+        ys = [M_integrand(lnM) for lnM in xs]
 
-        return I
+        return prefactor * romb(ys, dx)
 
 
     def P_1h_cc(self, k):
@@ -192,14 +200,16 @@ class MatterPower:
             M = np.exp(ln_M)
             n = self.mass_func(M, cfg.z)
 
-            first_term = M**2 * prefactor * n
+            first_term = M**2 * n
             second_term = self.clump_distribution.fourier(cfg.cosmo, k, M, cfg.z)**2 * self.Ic(k, M)**2
 
             return first_term * second_term * M # Jacobian for dlnM to dM conversion
         
-        I, error = integrate.quad(M_integrand, np.log(cfg.M_min), np.log(cfg.M_max), epsrel=1e-4, limit=200)
+        xs = np.linspace(np.log(cfg.M_min), np.log(cfg.M_max), cfg.N_M + 1)
+        dx = xs[1] - xs[0]
+        ys = [M_integrand(lnM) for lnM in xs]
 
-        return I
+        return prefactor * romb(ys, dx)
     
     
     def P_1h(self ,k):
@@ -221,7 +231,7 @@ class MatterPower:
             M = np.exp(lnM)
 
             n = self.mass_func(M, cfg.z)
-            first_term = M * prefactor * n * self.bias(M, cfg.z)
+            first_term = M * n * self.bias(M, cfg.z)
 
             M_smooth = (1 - self.f(M)) * M
             u_smooth = self.smooth_profile.fourier(cfg.cosmo, k, M_smooth, cfg.z)
@@ -229,8 +239,11 @@ class MatterPower:
 
             return first_term*second_term #M jacobian is multiplied out by second term 1/M
 
-        S, error = integrate.quad(M_integrand, np.log(cfg.M_min), np.log(cfg.M_max), epsrel=1e-4, limit=200)
-        return S
+        xs = np.linspace(np.log(cfg.M_min), np.log(cfg.M_max), cfg.N_M + 1)
+        dx = xs[1] - xs[0]
+        ys = [M_integrand(lnM) for lnM in xs]
+
+        return prefactor * romb(ys, dx)
 
 
     def C_I(self, k):
@@ -243,15 +256,17 @@ class MatterPower:
             M = np.exp(lnM)
 
             n = self.mass_func(M, cfg.z)
-            first_term = M * prefactor * n * self.bias(M, z=cfg.z)
+            first_term = M * n * self.bias(M, z=cfg.z)
 
             second_term = self.clump_distribution.fourier(cfg.cosmo, k, M, cfg.z) * self.Ic(k, M)
 
             return first_term*second_term * M #M jacobian is multiplied out by second term 1/M
 
+        xs = np.linspace(np.log(cfg.M_min), np.log(cfg.M_max), cfg.N_M + 1)
+        dx = xs[1] - xs[0]
+        ys = [M_integrand(lnM) for lnM in xs]
 
-        C, error = integrate.quad(M_integrand, np.log(cfg.M_min), np.log(cfg.M_max), epsrel=1e-4, limit=200)
-        return C
+        return prefactor * romb(ys, dx)
 
 
     def P_2h_ss(self, k):
@@ -277,49 +292,53 @@ class MatterPower:
         return self.P_1h(k) + self.P_2h(k)
 
 
-def Ic_analytic(self: MatterPower, k, M):
+def Ic_integrand(lnm, self: MatterPower, k, M):
     """I_c integral, eq. (30) in Giocoli et al..
     Args:
         k: wavenumber [Mpc/h]^-1
         M_parent: total halo mass [h M_sun]
     """
+
+    m = np.exp(lnm)
+    clump_profile_temp = self.clump_profile.fourier(self.cfg.cosmo, k, m, self.cfg.z)
+
+    return (1/M 
+            * clump_profile_temp 
+            * self.clump_mass_func(m, M, self.cfg.z) 
+            * m) # Jacobian for dlnm to dm conversion 
     
-    def m_integrand(lnm):
-        m = np.exp(lnm)
-        clump_profile_temp = self.clump_profile.fourier(self.cfg.cosmo, k, m, self.cfg.z)
 
-        return (1/M 
-                * clump_profile_temp 
-                * self.clump_mass_func(m, M, self.cfg.z) 
-                * m) # Jacobian for dlnm to dm conversion 
+def Ic_analytic(lnm_min, lnm_max, N, self: MatterPower, k, M):
+    xs = np.linspace(lnm_min, lnm_max, N+1)
+    dx = xs[1] - xs[0]
+    ys = [Ic_integrand(x, self, k, M) for x in xs]
+    return romb(ys, dx, show=False)
+    
 
-    I, error = integrate.quad(m_integrand, np.log(self.cfg.m_min), np.log(M), epsrel=1e-4, limit=200)
-
-    return I
-
-
-def Jc_analytic(self: MatterPower, k, M):
+def Jc_integrand(lnm, self: MatterPower, k, M):
     """J_c integral, eq. (31) in Giocoli et al..
     Args:
         k: wavenumber [Mpc/h]^-1
         M_parent: total halo mass [h M_sun]
     """
 
-    def m_integrand(lnm):
-        m = np.exp(lnm)
-        return (m*(1/M)**2 
-                * self.clump_profile.fourier(self.cfg.cosmo, k, m, self.cfg.z)**2  
-                * self.clump_mass_func(m, M, self.cfg.z) 
-                * m)   # Jacobian for dlnm to dm conversion
+    m = np.exp(lnm)
+    return (m*(1/M)**2 
+            * self.clump_profile.fourier(self.cfg.cosmo, k, m, self.cfg.z)**2  
+            * self.clump_mass_func(m, M, self.cfg.z) 
+            * m)   # Jacobian for dlnm to dm conversion
+
+
+def Jc_analytic(lnm_min, lnm_max, N, self: MatterPower, k, M):
+    xs = np.linspace(lnm_min, lnm_max, N+1)
+    dx = xs[1] - xs[0]
+    ys = [Jc_integrand(x, self, k, M) for x in xs]
+    return romb(ys, dx, show=False)
     
-    J, error = integrate.quad(m_integrand, np.log(self.cfg.m_min), np.log(M), epsrel=1e-4, limit=200)
-
-    return J
-
 
 # Worker function to compute both Ic and Jc for one (k, M)
 def compute_point(args):
-    Pm, k, M = args
-    Ic_val = Ic_analytic(Pm, k, M)
-    Jc_val = Jc_analytic(Pm, k, M)
+    lnm_min, lnm_max, N, Pm, k, M = args
+    Ic_val = Ic_analytic(lnm_min, lnm_max, N, Pm, k, M)
+    Jc_val = Jc_analytic(lnm_min, lnm_max, N, Pm, k, M)
     return (k, M, Ic_val, Jc_val)

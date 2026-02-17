@@ -1,7 +1,7 @@
 from ..mass_func.mass_func import MassFunc
 
 from abc import ABC, abstractmethod
-from scipy import integrate
+from scipy.integrate import romb
 import numpy as np
 
 class ClumpMassFunc(ABC):
@@ -12,7 +12,7 @@ class ClumpMassFunc(ABC):
         pass
 
 
-    def f(self, M, z, m_min=1):
+    def f(self, M, z, m_min=1, N_m=128):
         """
         returns fraction of mass contained in clumps in halo of mass M
         
@@ -25,8 +25,11 @@ class ClumpMassFunc(ABC):
             m = np.exp(ln_m)
             return self._cmf(m, M, z) * m
         
-        mass_in_clumps, error = integrate.quad(integrand, np.log(m_min), np.log(M))
-        return mass_in_clumps / M
+        xs = np.linspace(np.log(m_min), np.log(M), N_m + 1)
+        dx = xs[1] - xs[0]
+        ys = [integrand(lnm) for lnm in xs]
+
+        return romb(ys, dx)/M
 
 
     def __call__(self, m, M, z):

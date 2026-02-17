@@ -15,6 +15,7 @@ class Config:
         # Matter power spectrum
         self.z          = float(config['z'])
         self.m_min      = float(config['m_min'])
+        self.N_m        = int(config['N_m'])
         self.M_min      = float(config['M_min'])
         self.M_max      = float(config['M_max'])
         self.N_M        = int(config['N_M'])
