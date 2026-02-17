@@ -179,8 +179,8 @@ class del_MatterPower(MatterPower):
             second_term = M_smooth * self.smooth_profile.fourier(cfg.cosmo, k, M_smooth, cfg.z)
             del_second_term =  del_M_smooth * self.smooth_profile.fourier(cfg.cosmo, k, M_smooth, cfg.z)
 
-            third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M_smooth, cfg.z) * self.Ic(k, M)
-            del_third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M_smooth, cfg.z) * self.del_Ic(k, M)
+            third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M, cfg.z) * self.Ic(k, M)
+            del_third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M, cfg.z) * self.del_Ic(k, M)
 
             return first_term * (del_second_term * third_term + second_term*del_third_term) * M # Jacobian for dlnM to dM conversion
 
@@ -227,7 +227,7 @@ class del_MatterPower(MatterPower):
 
             first_term = M**2 * prefactor * n
             M_smooth = (1 - self.f(M))*M
-            second_term = (self.clump_distribution.fourier(cfg.cosmo, k, M_smooth, cfg.z)**2 
+            second_term = (self.clump_distribution.fourier(cfg.cosmo, k, M, cfg.z)**2 
                            * 2*self.del_Ic(k, M) * self.Ic(k, M))
 
             return first_term * second_term * M # Jacobian for dlnM to dM conversion

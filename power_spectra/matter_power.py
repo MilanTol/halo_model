@@ -145,9 +145,9 @@ class MatterPower:
             first_term = 2 * prefactor * M  * n
 
             M_smooth = (1 - self.f(M)) * M  # Smooth mass component
-            second_term = M_smooth * self.smooth_profile.fourier(cfg.cosmo, k, M_smooth, cfg.z)
+            second_term = M_smooth * self.smooth_profile.fourier(cfg.cosmo, k, M, cfg.z)
 
-            third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M_smooth, cfg.z) * self.Ic(k, M)
+            third_term = self.clump_distribution.fourier(self.cfg.cosmo, k, M, cfg.z) * self.Ic(k, M)
 
             return first_term * second_term * third_term * M # Jacobian for dlnM to dM conversion
 
@@ -193,8 +193,7 @@ class MatterPower:
             n = self.mass_func(M, cfg.z)
 
             first_term = M**2 * prefactor * n
-            M_smooth = (1 - self.f(M))*M
-            second_term = self.clump_distribution.fourier(cfg.cosmo, k, M_smooth, cfg.z)**2 * self.Ic(k, M)**2
+            second_term = self.clump_distribution.fourier(cfg.cosmo, k, M, cfg.z)**2 * self.Ic(k, M)**2
 
             return first_term * second_term * M # Jacobian for dlnM to dM conversion
         
