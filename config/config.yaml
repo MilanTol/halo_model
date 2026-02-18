@@ -2,10 +2,10 @@
 #config matter power spectrum
 z: 0
 m_min: 1
-N_m: 64 #power of 2
+N_m: 128 #power of 2
 M_min: 1
 M_max: 1e16
-N_M: 64 #power of 2 
+N_M: 128 #power of 2 
 k_min: 1e-1
 k_max: 1e4
 N_k: 60
